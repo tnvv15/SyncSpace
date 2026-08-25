@@ -29,8 +29,8 @@ export function TopBar({ workspaceState }: TopBarProps) {
         <div 
           className="flex items-center space-x-2 text-xs font-medium px-2 py-1 rounded-md transition-colors"
         >
-          <Cloud size={14} className="text-status-synced" />
-          <span className="text-workspace-600">Saved locally</span>
+          <Cloud size={14} className={workspaceState.saveStatus === 'syncing' ? 'text-workspace-400 animate-pulse' : 'text-status-synced'} />
+          <span className="text-workspace-600">{workspaceState.saveStatus}</span>
         </div>
 
         {/* Sync Panel Toggle */}

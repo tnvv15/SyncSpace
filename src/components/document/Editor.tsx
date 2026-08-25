@@ -60,7 +60,7 @@ export function Editor({ workspaceState }: EditorProps) {
           </div>
 
           <div className="space-y-1 pb-32">
-            {docBlocks.map(block => (
+            {docBlocks.map((block: BlockType) => (
               <Block 
                 key={block.id} 
                 block={block} 

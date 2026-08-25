@@ -16,7 +16,7 @@ export type DocumentSummary = {
 };
 
 export const MOCK_USERS: Record<string, User> = {
-  'u1': { id: 'u1', name: 'Mannat', color: '#00667E', avatarUrl: 'https://api.dicebear.com/7.x/notionists/svg?seed=Mannat&backgroundColor=c0aede', isOnline: true },
+  'u1': { id: 'u1', name: 'Tanvi', color: '#00667E', avatarUrl: 'https://api.dicebear.com/7.x/notionists/svg?seed=Tanvi&backgroundColor=c0aede', isOnline: true },
   'u2': { id: 'u2', name: 'Alex', color: '#10B981', avatarUrl: 'https://api.dicebear.com/7.x/notionists/svg?seed=Alex&backgroundColor=b6e3f4', isOnline: true },
   'u3': { id: 'u3', name: 'Rahul', color: '#F59E0B', avatarUrl: 'https://api.dicebear.com/7.x/notionists/svg?seed=Rahul&backgroundColor=ffdfbf', isOnline: false },
 };

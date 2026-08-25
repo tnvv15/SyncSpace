@@ -45,7 +45,7 @@ export function CanvasBoard({ workspaceState }: CanvasBoardProps) {
 
   const handleTextChange = (id: string, text: string) => {
     if (!currentDocId) return;
-    const item = items.find(i => i.id === id);
+    const item = items.find((i: CanvasItem) => i.id === id);
     if (item) {
       updateCanvasItem(currentDocId, { ...item, text });
     }
@@ -90,7 +90,7 @@ export function CanvasBoard({ workspaceState }: CanvasBoardProps) {
           </defs>
         </svg>
 
-        {items.map(item => (
+        {items.map((item: CanvasItem) => (
           <div 
             key={item.id}
             onPointerDown={(e) => handlePointerDown(e, item)}

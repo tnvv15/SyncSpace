@@ -1,97 +1,410 @@
-import React, { useState } from 'react';
-import { MOCK_USERS, CURRENT_USER_ID } from '../data/mockData';
-import { FileText, Plus, Search, MoreHorizontal, Star, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { MOCK_USERS } from '../data/mockData';
+import { useAuth } from '../auth/AuthContext';
+import { FileText, Plus, Search, Star, Trash2, LayoutGrid, Users, Upload, FileIcon, Image as ImageIcon, Download, RotateCcw, Clock, Layers, FileUp } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { DocumentCard } from '../components/document/DocumentCard';
+
+function formatBytes(bytes: number, decimals = 2) {
+  if (!+bytes) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+function formatRelativeTime(dateMs: number) {
+  const diffMs = Date.now() - dateMs;
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  return `${diffDays} days ago`;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 22) return 'Good evening';
+  return 'Working late';
+}
 
 export function Dashboard() {
-  const currentUser = MOCK_USERS[CURRENT_USER_ID];
-  const { documents, createDocument, deleteDocument, toggleFavorite } = useWorkspace();
+  const { user } = useAuth();
+  const { documents, createItem, uploadFile, deleteDocument, toggleFavorite, activeUsersByDoc, restoreFromTrash, permanentlyDelete, emptyTrash, updateDocumentTitle } = useWorkspace();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const handleCreateDocument = () => {
-    const id = createDocument();
+  
+  // Parse query params to set initial filter if present
+  const [filter, setFilter] = useState<'all' | 'canvas' | 'doc' | 'files' | 'favorites' | 'shared' | 'recent' | 'trash'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const f = params.get('filter');
+    if (f && ['all', 'canvas', 'doc', 'files', 'favorites', 'shared', 'recent', 'trash'].includes(f)) {
+      return f as any;
+    }
+    return 'all';
+  });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCreateCanvas = () => {
+    const id = createItem('canvas');
     navigate(`/workspace/${id}`);
   };
 
-  const activeDocs = Object.values(documents).filter(doc => !doc.isDeleted);
-  
-  const filteredDocs = activeDocs.filter(doc => 
-    doc.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  // Sort recent docs by a mock heuristic (just reversed for now to show latest)
-  const recentDocs = [...filteredDocs].reverse();
+  const handleCreateDocument = () => {
+    const id = createItem('doc');
+    navigate(`/workspace/${id}`);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        await uploadFile(files[i]);
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        await uploadFile(files[i]);
+      }
+    }
+  };
+
+  const allDocs = Object.values(documents);
+
+  const filteredDocs = allDocs.filter(doc => {
+    const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (filter === 'trash') return !!doc.isDeleted;
+    if (doc.isDeleted) return false;
+
+    if (filter === 'canvas') return doc.type === 'canvas';
+    if (filter === 'doc') return doc.type === 'doc';
+    if (filter === 'files') return doc.type === 'file';
+    if (filter === 'favorites') return doc.isFavorite;
+    if (filter === 'shared') {
+      const activeUsers = activeUsersByDoc[doc.id] || [];
+      return doc.createdBy !== user?.name || activeUsers.length > 0;
+    }
+    return true;
+  });
+
+  const recentDocs = [...filteredDocs].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const handleToggleSelect = (id: string, selected: boolean) => {
+    const next = new Set(selectedIds);
+    if (selected) next.add(id);
+    else next.delete(id);
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === recentDocs.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(recentDocs.map(d => d.id)));
+    }
+  };
+
+  const handleBulkFavorite = () => {
+    selectedIds.forEach(id => toggleFavorite(id));
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = () => {
+    selectedIds.forEach(id => deleteDocument(id));
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkExport = () => {
+    const exportData = Array.from(selectedIds).map(id => documents[id]).filter(Boolean);
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `syncspace_export_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setSelectedIds(new Set());
+  };
+
+  // Clear selection when filter changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filter, searchQuery]);
 
   return (
-    <div className="flex-1 bg-white overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <h1 className="text-3xl font-semibold mb-8">Good afternoon, {currentUser.name}</h1>
-        
-        {/* Actions */}
-        <div className="flex items-center space-x-4 mb-12">
-          <button 
-            onClick={handleCreateDocument}
-            className="flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
-          >
-            <Plus size={18} />
-            <span>New Document</span>
-          </button>
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-workspace-400" size={18} />
-            <input 
-              type="text" 
+    <div
+      className={`flex-1 bg-white overflow-y-auto relative ${isDragging ? 'bg-primary-50/50' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 z-50 border-4 border-primary-500 border-dashed rounded-lg bg-white/50 backdrop-blur-sm flex items-center justify-center pointer-events-none m-4">
+          <div className="text-center">
+            <Upload size={48} className="text-primary-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-workspace-900">Drop files to upload</h2>
+            <p className="text-workspace-500 mt-2">Any file type is supported</p>
+          </div>
+        </div>
+      )}
+
+      <div className="px-8 py-6">
+        {/* Top Row: Greeting & Actions */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+          <div>
+            <h1 className="text-3xl font-semibold text-workspace-900 mb-1">{getGreeting()}, {user?.name || 'Tanvi'}</h1>
+            <p className="text-workspace-500">Welcome back to your local-first workspace</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleCreateCanvas}
+              className="flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
+            >
+              <LayoutGrid size={18} />
+              <span>New Canvas</span>
+            </button>
+
+            <button
+              onClick={handleCreateDocument}
+              className="flex items-center justify-center space-x-2 bg-white border border-workspace-200 hover:bg-workspace-50 text-workspace-800 px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
+            >
+              <FileText size={18} />
+              <span>New Document</span>
+            </button>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              multiple
+              accept="image/*,application/pdf,.txt,.md,.json"
+              onChange={handleFileUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center space-x-2 bg-white border border-workspace-200 hover:bg-workspace-50 text-workspace-800 px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
+            >
+              <Upload size={18} />
+              <span>Upload File</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Second Row: Filters & Search */}
+        <div className="flex items-center justify-between gap-4 w-full mb-8">
+          <div className="inline-flex items-center gap-2 bg-neutral-100/90 p-1.5 rounded-2xl border border-neutral-200/60 overflow-x-auto hide-scrollbar w-full md:w-auto">
+            {(['all', 'canvas', 'doc', 'files', 'favorites', 'shared'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => {
+                  setFilter(f);
+                  if (f === 'all') navigate('/dashboard', { replace: true });
+                  else navigate(`/dashboard?filter=${f}`, { replace: true });
+                }}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all whitespace-nowrap ${filter === f
+                  ? 'bg-neutral-900 text-white shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/70'
+                  }`}
+              >
+                {f === 'all' && <Layers className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                {f === 'canvas' && <LayoutGrid className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                {f === 'doc' && <FileText className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                {f === 'files' && <FileUp className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                {f === 'favorites' && <Star className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                {f === 'shared' && <Users className={`w-4 h-4 shrink-0 ${filter === f ? 'text-white' : 'text-neutral-400'}`} />}
+                <span className="leading-none">{f === 'doc' ? 'Documents' : f === 'canvas' ? 'Canvases' : f === 'shared' ? 'Shared With Me' : f}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-72 md:w-80 shrink-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <input
+              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search documents..." 
-              className="w-full pl-10 pr-4 py-2 border border-workspace-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 bg-workspace-50 hover:bg-white transition-colors"
+              placeholder="Search workspaces..."
+              className="w-full pl-10 pr-10 py-2 bg-white border border-neutral-200 rounded-2xl text-sm text-neutral-900 placeholder:text-neutral-400 outline-none focus:border-neutral-400 shadow-xs"
             />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-neutral-400 border border-neutral-200 bg-white text-xs px-1.5 py-0.5 rounded-md font-semibold">
+              ⌘K
+            </div>
           </div>
         </div>
 
         {/* Recent Documents */}
         <div>
-          <h2 className="text-sm font-semibold text-workspace-500 uppercase tracking-wider mb-4">
-            {searchQuery ? 'Search Results' : 'Recent Documents'}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentDocs.length === 0 && (
-              <div className="text-workspace-500 text-sm py-4">No documents found.</div>
-            )}
-            {recentDocs.map(doc => (
-              <div 
-                key={doc.id} 
-                className="group block p-4 border border-workspace-200 rounded-lg hover:border-primary-300 hover:shadow-panel transition-all bg-white relative"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="p-2 bg-workspace-100 rounded text-workspace-600 group-hover:text-primary-600 group-hover:bg-primary-50 transition-colors">
-                    <FileText size={24} />
-                  </div>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }}
-                      className={`p-1.5 rounded hover:bg-workspace-100 ${doc.isFavorite ? 'text-amber-400' : 'text-workspace-300 hover:text-workspace-700'}`}
-                    >
-                      <Star size={16} fill={doc.isFavorite ? 'currentColor' : 'none'} />
-                    </button>
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteDocument(doc.id); }}
-                      className="p-1.5 text-workspace-300 hover:text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                <Link to={`/workspace/${doc.id}`} className="block">
-                  <h3 className="font-medium text-workspace-900 mb-1 truncate">{doc.title}</h3>
-                  <p className="text-xs text-workspace-500">Edited {doc.updatedAt}</p>
-                </Link>
+          {filter === 'trash' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+              <div className="text-red-700 text-sm">
+                Items in trash are stored locally. You can restore them or delete them permanently.
               </div>
-            ))}
+              <button
+                onClick={() => {
+                  if (window.confirm('Empty trash? This cannot be undone.')) emptyTrash();
+                }}
+                className="text-red-700 font-medium text-sm hover:text-red-800 bg-white px-3 py-1.5 rounded-md border border-red-200 shadow-sm"
+              >
+                Empty Trash
+              </button>
+            </div>
+          )}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-workspace-500 uppercase tracking-wider">
+              {searchQuery ? 'Search Results' : filter === 'all' ? 'Recent Workspaces' : `Filtered: ${filter}`}
+            </h2>
+            {recentDocs.length > 0 && (
+              <button
+                onClick={handleSelectAll}
+                className="text-xs font-medium text-workspace-500 hover:text-workspace-900 transition-colors"
+              >
+                {selectedIds.size === recentDocs.length ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-6">
+            {recentDocs.length === 0 && allDocs.length > 0 && (
+              <div className="text-workspace-500 text-sm py-4 col-span-3">No documents found matching your criteria.</div>
+            )}
+
+            {recentDocs.map(doc => {
+              const activeUsers = activeUsersByDoc[doc.id] || [];
+              return (
+                <DocumentCard
+                  key={doc.id}
+                  doc={doc}
+                  filter={filter}
+                  activeUsers={activeUsers}
+                  selected={selectedIds.has(doc.id)}
+                  showSelection={selectedIds.size > 0}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleFavorite={toggleFavorite}
+                  onDelete={deleteDocument}
+                  onRestore={restoreFromTrash}
+                  onPermanentlyDelete={permanentlyDelete}
+                  onUpdateTitle={updateDocumentTitle}
+                />
+              );
+            })}
+          </div>
+
+          {allDocs.length === 0 && (
+            <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                <LayoutGrid className="text-workspace-400" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-workspace-900 mb-1">No workspaces yet</h3>
+              <p className="text-sm text-workspace-500 mb-6 text-center max-w-sm">
+                Create your first Canvas or Document to get started.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={handleCreateCanvas}
+                  className="flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
+                >
+                  <Plus size={18} />
+                  <span>New Canvas</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {allDocs.length > 0 && recentDocs.length === 0 && filter === 'shared' && (
+            <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                <Users className="text-workspace-400" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-workspace-900 mb-1">No shared documents yet</h3>
+              <p className="text-sm text-workspace-500 text-center max-w-sm">
+                Workspaces shared by other peers over the network will appear here.
+              </p>
+            </div>
+          )}
+
+          {allDocs.length > 0 && recentDocs.length === 0 && filter === 'trash' && (
+            <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                <Trash2 className="text-workspace-400" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-workspace-900 mb-1">Trash is empty</h3>
+              <p className="text-sm text-workspace-500 text-center max-w-sm">
+                Deleted documents and canvases will appear here.
+              </p>
+            </div>
+          )}
+
+          {allDocs.length > 0 && recentDocs.length === 0 && filter === 'favorites' && (
+            <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center shadow-sm mb-4">
+                <Star className="text-amber-400" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-workspace-900 mb-1">No favorite items yet</h3>
+              <p className="text-sm text-workspace-500 text-center max-w-sm">
+                Click the star icon on any document or canvas to pin it here for quick access.
+              </p>
+            </div>
+          )}
         </div>
       </div>
+      
+      {/* Floating Bulk Actions Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center bg-neutral-900 text-white rounded-2xl shadow-2xl px-4 py-3 gap-4 border border-neutral-700 animate-in slide-in-from-bottom-8">
+          <div className="text-sm font-medium border-r border-neutral-700 pr-4">
+            {selectedIds.size} item{selectedIds.size > 1 ? 's' : ''} selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleBulkFavorite} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors text-sm font-medium">
+              <Star size={16} /> Favorite
+            </button>
+            <button onClick={handleBulkExport} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors text-sm font-medium">
+              <Download size={16} /> Export
+            </button>
+            <button onClick={handleBulkDelete} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-900/50 text-red-400 transition-colors text-sm font-medium">
+              <Trash2 size={16} /> Delete
+            </button>
+          </div>
+          <button onClick={() => setSelectedIds(new Set())} className="ml-2 p-1.5 rounded-full hover:bg-neutral-800 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
