@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { WebsocketProvider } from 'y-websocket';
@@ -146,7 +146,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const setCurrentDocId = (id: string | null) => {
+  const setCurrentDocId = useCallback((id: string | null) => {
     if (providerRef.current?.awareness) {
       const awareness = providerRef.current.awareness;
       const localState = awareness.getLocalState();
@@ -158,7 +158,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  };
+  }, []);
 
   const createItem = (type: 'canvas' | 'doc' | 'file', title?: string) => {
     if (!documentsMapRef.current || !ydocRef.current) return '';

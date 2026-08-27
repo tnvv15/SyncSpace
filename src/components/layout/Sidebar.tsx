@@ -75,11 +75,11 @@ export function Sidebar() {
         </div>
 
         <div className="mb-6 space-y-1">
-          <SidebarItem 
-            icon={<Star size={18} />} 
-            label="Favorites" 
-            to="/dashboard?filter=favorites" 
-            badge={favorites.length > 0 ? <div className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-workspace-200 text-workspace-600">{favorites.length}</div> : null} 
+          <SidebarItem
+            icon={<Star size={18} />}
+            label="Favorites"
+            to="/dashboard?filter=favorites"
+            badge={favorites.length > 0 ? <div className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-workspace-200 text-workspace-600">{favorites.length}</div> : null}
           />
           <SidebarItem icon={<Users size={18} />} label="Shared With Me" to="/dashboard?filter=shared" />
           <SidebarItem icon={<Clock size={18} />} label="Recent Activity" to="/dashboard?filter=recent" />
@@ -93,11 +93,11 @@ export function Sidebar() {
             </div>
             <div className="space-y-1">
               {favorites.map(doc => (
-                <SidebarItem 
-                  key={doc.id} 
-                  icon={doc.type === 'canvas' ? <LayoutGrid size={18} /> : <FileText size={18} />} 
-                  label={doc.title} 
-                  to={`/workspace/${doc.id}`} 
+                <SidebarItem
+                  key={doc.id}
+                  icon={doc.type === 'canvas' ? <LayoutGrid size={18} /> : <FileText size={18} />}
+                  label={doc.title}
+                  to={`/workspace/${doc.id}`}
                 />
               ))}
             </div>
@@ -115,7 +115,7 @@ function SidebarItem({ icon, label, to, badge }: { icon: React.ReactNode, label:
     const isActiveURL = new URLSearchParams(window.location.search).get('filter');
     const isDashboard = window.location.pathname === '/dashboard';
     const toFilter = new URLSearchParams(to.split('?')[1]).get('filter');
-    
+
     // For Dashboard vs filtered dashboard
     let active = false;
     if (to === '/dashboard') active = isDashboard && (!isActiveURL || isActiveURL === 'all');

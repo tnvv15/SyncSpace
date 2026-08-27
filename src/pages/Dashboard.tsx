@@ -42,7 +42,7 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  
+
   // Parse query params to set initial filter if present
   const [filter, setFilter] = useState<'all' | 'canvas' | 'doc' | 'files' | 'favorites' | 'shared' | 'recent' | 'trash'>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -187,7 +187,7 @@ export function Dashboard() {
             <h1 className="text-3xl font-semibold text-workspace-900 mb-1">{getGreeting()}, {user?.name || 'Tanvi'}</h1>
             <p className="text-workspace-500">Welcome back to your local-first workspace</p>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleCreateCanvas}
@@ -379,7 +379,7 @@ export function Dashboard() {
           )}
         </div>
       </div>
-      
+
       {/* Floating Bulk Actions Toolbar */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center bg-neutral-900 text-white rounded-2xl shadow-2xl px-4 py-3 gap-4 border border-neutral-700 animate-in slide-in-from-bottom-8">
