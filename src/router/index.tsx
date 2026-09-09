@@ -44,11 +44,15 @@ const router = createBrowserRouter([
   },
 ]);
 
+import { DocumentUIProvider } from '../context/DocumentUIContext';
+
 export function AppRouter() {
   return (
     <AuthProvider>
       <WorkspaceProvider>
-        <RouterProvider router={router} />
+        <DocumentUIProvider>
+          <RouterProvider router={router} />
+        </DocumentUIProvider>
       </WorkspaceProvider>
     </AuthProvider>
   );
