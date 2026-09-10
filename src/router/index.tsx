@@ -5,14 +5,20 @@ import { Dashboard } from '../pages/Dashboard';
 import { Workspace } from '../pages/Workspace';
 import { Settings } from '../pages/Settings';
 import { WorkspaceProvider } from '../context/WorkspaceContext';
-import { AuthProvider } from '../auth/AuthContext';
-import { ProtectedRoute } from '../auth/ProtectedRoute';
+import { DocumentUIProvider } from '../context/DocumentUIContext';
+import { AuthProvider } from '../context/AuthContext';
+import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 import { Login } from '../pages/Login';
+import { Register } from '../pages/Register';
 
 const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
+  },
+  {
+    path: '/register',
+    element: <Register />,
   },
   {
     path: '/',
@@ -37,14 +43,16 @@ const router = createBrowserRouter([
           {
             path: 'settings',
             element: <Settings />,
-          }
+          },
         ],
-      }
-    ]
+      },
+    ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/dashboard" replace />,
   },
 ]);
-
-import { DocumentUIProvider } from '../context/DocumentUIContext';
 
 export function AppRouter() {
   return (
@@ -57,3 +65,5 @@ export function AppRouter() {
     </AuthProvider>
   );
 }
+
+export default AppRouter;
