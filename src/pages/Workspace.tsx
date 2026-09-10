@@ -27,12 +27,9 @@ export function Workspace() {
 
   return (
     <div className="flex flex-col h-full bg-white relative">
-<<<<<<< Updated upstream
-      {type !== 'doc' && <TopBar workspaceState={workspaceState} />}
-=======
-      {type !== 'canvas' && <TopBar workspaceState={workspaceState} />}
->>>>>>> Stashed changes
-      
+      {type !== 'doc' && type !== 'canvas' && (
+        <TopBar workspaceState={workspaceState} />
+      )}
       {/* Content Area */}
       <div className="flex-1 overflow-hidden relative">
         {type === 'file' ? (
@@ -49,9 +46,9 @@ export function Workspace() {
               <p className="text-workspace-500 mb-8">
                 {doc.fileData?.mimeType || 'Unknown format'} &bull; {doc.fileData?.size ? (doc.fileData.size / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
               </p>
-              
+
               {doc.fileData?.blobUrl && (
-                <a 
+                <a
                   href={doc.fileData.blobUrl}
                   download={doc.fileData.name}
                   className="inline-flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
