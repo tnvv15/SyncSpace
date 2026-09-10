@@ -27,7 +27,9 @@ export function Workspace() {
 
   return (
     <div className="flex flex-col h-full bg-white relative">
+      {type !== 'doc' && type!=='canvas' &&(
       <TopBar workspaceState={workspaceState} />
+)}
       
       {/* Content Area */}
       <div className="flex-1 overflow-hidden relative">
