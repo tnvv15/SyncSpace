@@ -27,7 +27,11 @@ export function Workspace() {
 
   return (
     <div className="flex flex-col h-full bg-white relative">
+<<<<<<< Updated upstream
       {type !== 'doc' && <TopBar workspaceState={workspaceState} />}
+=======
+      {type !== 'canvas' && <TopBar workspaceState={workspaceState} />}
+>>>>>>> Stashed changes
       
       {/* Content Area */}
       <div className="flex-1 overflow-hidden relative">
