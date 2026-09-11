@@ -1,7 +1,7 @@
 // Prisma schema for SyncSpace
 
 datasource db {
-  provider = "sqlite" // Default to SQLite for local zero-config development; can be configured to "postgresql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
