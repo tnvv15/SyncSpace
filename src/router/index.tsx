@@ -10,6 +10,8 @@ import { AuthProvider } from '../context/AuthContext';
 import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 import { Login } from '../pages/Login';
 import { Register } from '../pages/Register';
+import { ForgotPassword } from '../pages/ForgotPassword';
+import { ResetPassword } from '../pages/ResetPassword';
 
 const router = createBrowserRouter([
   {
@@ -19,6 +21,14 @@ const router = createBrowserRouter([
   {
     path: '/register',
     element: <Register />,
+  },
+  {
+    path: '/forgot-password',
+    element: <ForgotPassword />,
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPassword />,
   },
   {
     path: '/',

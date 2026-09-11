@@ -172,6 +172,9 @@ export function Login() {
                 <label className="block text-sm font-medium text-workspace-700" htmlFor="login-password">
                   Password
                 </label>
+                <Link to="/forgot-password" className="text-sm font-medium text-primary-600 hover:text-primary-700">
+                  Forgot password?
+                </Link>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-workspace-400">

@@ -1,4 +1,4 @@
-import type { CreateUserInput, LoginInput } from '../validation/auth';
+import type { CreateUserInput, LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../validation/auth';
 import type { SafeUser } from '../../types/auth';
 
 /**
@@ -81,4 +81,33 @@ export async function getCurrentUserApi(): Promise<SafeUser | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Initiates password reset by sending the user's email.
+ * Returns the response which may include development reset link in non-production mode.
+ */
+export async function forgotPasswordApi(data: ForgotPasswordInput): Promise<{ message: string; devResetLink?: string; devEmail?: string }> {
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ message: string; devResetLink?: string; devEmail?: string }>(res);
+}
+
+/**
+ * Resets the user's password using a valid reset token.
+ */
+export async function resetPasswordApi(data: ResetPasswordInput): Promise<{ message: string }> {
+  const res = await fetch('/api/auth/reset-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ message: string }>(res);
 }
