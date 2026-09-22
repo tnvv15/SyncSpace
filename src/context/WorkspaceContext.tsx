@@ -1,317 +1,242 @@
-import React, { createContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
+import React, { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { WebsocketProvider } from 'y-websocket';
-import { DocumentMeta, SyncStatus, UserPresence } from '../types/dashboard';
-import { CURRENT_USER_ID } from '../data/mockData';
+import type { DocumentMeta, SyncStatus, UserPresence } from '../types/dashboard';
 import { useAuth } from '../auth/AuthContext';
+import { listDocumentsApi, createDocumentApi, updateDocumentApi, deleteDocumentApi } from '../lib/api/documents';
 
-export type CanvasItem = {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  r?: number;
-  text?: string;
-  color?: string;
-};
+export type CanvasItem = { id: string; type: string; x: number; y: number; w?: number; h?: number; r?: number; text?: string; color?: string };
 
 export type WorkspaceContextType = {
   documents: Record<string, DocumentMeta>;
-  createItem: (type: 'canvas' | 'doc' | 'file', title?: string) => string;
+  isLoadingDocuments: boolean;
+  createItem: (type: 'canvas' | 'doc' | 'file', title?: string) => Promise<string>;
   uploadFile: (file: File) => Promise<string>;
-  moveToTrash: (id: string) => void;
-  restoreFromTrash: (id: string) => void;
-  permanentlyDelete: (id: string) => void;
-  emptyTrash: () => void;
-  deleteDocument: (id: string) => void;
-  toggleFavorite: (id: string) => void;
-  updateDocumentTitle: (id: string, title: string) => void;
+  moveToTrash: (id: string) => Promise<void>;
+  restoreFromTrash: (id: string) => Promise<void>;
+  permanentlyDelete: (id: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+  deleteDocument: (id: string) => Promise<void>;
+  toggleFavorite: (id: string) => Promise<void>;
+  updateDocumentTitle: (id: string, title: string) => Promise<void>;
   saveStatus: SyncStatus;
   activeUsersByDoc: Record<string, UserPresence[]>;
-
-  // Stubbing these for now so we don't break existing destructurings 
-  // before the Editor is refactored in a later step.
-  blocks?: any;
-  updateBlock?: any;
-  toggleChecklist?: any;
-  addBlock?: any;
-  deleteBlock?: any;
-  setIsSyncPanelOpen?: any;
-  currentDocId?: any;
-  canvasItems?: any;
-  updateCanvasItem?: any;
-  deleteCanvasItem?: any;
-  addCanvasItem?: any;
+  blocks?: any; updateBlock?: any; toggleChecklist?: any; addBlock?: any; deleteBlock?: any;
+  setIsSyncPanelOpen?: any; currentDocId?: any;
+  canvasItems?: any; updateCanvasItem?: any; deleteCanvasItem?: any; addCanvasItem?: any;
   setCurrentDocId: (id: string | null) => void;
 };
 
 export const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
 
-function generateId() {
-  return Math.random().toString(36).substr(2, 9);
+// Integration's relay configuration. This endpoint is separate from Express.
+const DEFAULT_WS_URL = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:1234';
+
+function createLocalFileId(): string {
+  return `file-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
 }
 
-const DEFAULT_WS_URL = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:1234';
-console.log("SYNCSPACE WS URL =", DEFAULT_WS_URL);
-console.log("RAW VITE_WS_URL =", (import.meta as any).env?.VITE_WS_URL);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Record<string, DocumentMeta>>({});
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SyncStatus>('syncing');
   const [activeUsersByDoc, setActiveUsersByDoc] = useState<Record<string, UserPresence[]>>({});
   const { user } = useAuth();
 
+  // This preserves integration's IndexedDB/WebSocket presence channel. Database
+  // document metadata is intentionally not stored in workspace-directory.
   const ydocRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const idbRef = useRef<IndexeddbPersistence | null>(null);
-  const documentsMapRef = useRef<Y.Map<DocumentMeta> | null>(null);
+  const localFilesMapRef = useRef<Y.Map<DocumentMeta> | null>(null);
 
   useEffect(() => {
-    const docName = 'workspace-directory';
     const doc = new Y.Doc();
-    ydocRef.current = doc;
-
-    const idbProvider = new IndexeddbPersistence(docName, doc);
-    idbRef.current = idbProvider;
-
-    const documentsMap = doc.getMap<DocumentMeta>('documents');
-    documentsMapRef.current = documentsMap;
-
-    const updateReactElements = () => {
-      const docsRecord: Record<string, DocumentMeta> = {};
-      documentsMap.forEach((meta, id) => {
-        if (meta && typeof meta === 'object') {
-          docsRecord[id] = meta;
-        }
-      });
-      setDocuments(docsRecord);
-    };
-
-    idbProvider.on('synced', () => {
-      setSaveStatus('synced');
-      updateReactElements();
-    });
-
+    const idbProvider = new IndexeddbPersistence('workspace-directory', doc);
+    const localFilesMap = doc.getMap<DocumentMeta>('local-files');
     let wsProvider: WebsocketProvider | null = null;
+    ydocRef.current = doc;
+    idbRef.current = idbProvider;
+    localFilesMapRef.current = localFilesMap;
+
+    const syncLocalFiles = () => {
+      const localFiles: Record<string, DocumentMeta> = {};
+      localFilesMap.forEach((file, id) => { localFiles[id] = file; });
+      setDocuments((previous) => ({
+        ...Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type !== 'file')),
+        ...localFiles,
+      }));
+    };
+    const handleIndexedDbSynced = () => { syncLocalFiles(); setSaveStatus('synced'); };
+    idbProvider.on('synced', handleIndexedDbSynced);
+    localFilesMap.observe(syncLocalFiles);
+
+    let cleanupAwareness: (() => void) | undefined;
     try {
-      wsProvider = new WebsocketProvider(DEFAULT_WS_URL, docName, doc, { connect: true });
+      wsProvider = new WebsocketProvider(DEFAULT_WS_URL, 'workspace-directory', doc, { connect: true });
       providerRef.current = wsProvider;
-
       wsProvider.on('status', (event: { status: 'connected' | 'connecting' | 'disconnected' }) => {
-        if (event.status === 'connected') setSaveStatus('synced');
-        else if (event.status === 'connecting') setSaveStatus('syncing');
-        else setSaveStatus('offline');
+        setSaveStatus(event.status === 'connected' ? 'synced' : event.status === 'connecting' ? 'syncing' : 'offline');
       });
-
       const awareness = wsProvider.awareness;
-      awareness.setLocalStateField('user', {
-        userId: CURRENT_USER_ID,
-        userName: user?.name || 'Tanvi',
-        userColor: '#00667E', // In reality, generate random or hash
-        currentDocId: null,
-        lastActive: Date.now(),
-      });
-
-      awareness.on('change', () => {
-        const states = awareness.getStates();
+      const handleAwarenessChange = () => {
         const usersByDoc: Record<string, UserPresence[]> = {};
-
-        states.forEach((state) => {
-          if (state.user && state.user.currentDocId) {
-            if (!usersByDoc[state.user.currentDocId]) {
-              usersByDoc[state.user.currentDocId] = [];
-            }
-            usersByDoc[state.user.currentDocId].push(state.user as UserPresence);
-          }
+        awareness.getStates().forEach((state) => {
+          if (state.user?.currentDocId) (usersByDoc[state.user.currentDocId] ||= []).push(state.user as UserPresence);
         });
         setActiveUsersByDoc(usersByDoc);
-      });
-
-    } catch (e) {
-      console.warn('WebSocket connection fallback to local-only mode:', e);
+      };
+      awareness.on('change', handleAwarenessChange);
+      cleanupAwareness = () => { awareness.off('change', handleAwarenessChange); awareness.setLocalState(null); };
+    } catch (error) {
+      console.warn('WebSocket connection fallback to local-only IndexedDB mode:', error);
       setSaveStatus('offline');
     }
 
-    documentsMap.observe(() => {
-      updateReactElements();
-    });
-
-    updateReactElements();
-
     return () => {
-      if (wsProvider) wsProvider.destroy();
+      localFilesMap.unobserve(syncLocalFiles);
+      idbProvider.off('synced', handleIndexedDbSynced);
+      cleanupAwareness?.();
+      wsProvider?.destroy();
       idbProvider.destroy();
       doc.destroy();
+      ydocRef.current = null;
+      providerRef.current = null;
+      idbRef.current = null;
+      localFilesMapRef.current = null;
     };
   }, []);
+
+  // Set or refresh integration's awareness payload after authentication loads.
+  useEffect(() => {
+    const awareness = providerRef.current?.awareness;
+    if (!awareness || !user) return;
+    const current = awareness.getLocalState()?.user;
+    awareness.setLocalStateField('user', {
+      ...current, userId: user.id, userName: user.name, userColor: '#00667E',
+      currentDocId: current?.currentDocId ?? null, lastActive: Date.now(),
+    });
+  }, [user]);
+
+  // PostgreSQL remains the source of truth for canvas/document metadata.
+  useEffect(() => {
+    if (!user) {
+      setDocuments((previous) => Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')));
+      setIsLoadingDocuments(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingDocuments(true);
+    void listDocumentsApi(user.name)
+      .then((apiDocuments) => {
+        if (cancelled) return;
+        const metadata = Object.fromEntries(apiDocuments.map((item) => [item.id, item]));
+        setDocuments((previous) => ({ ...metadata, ...Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')) }));
+      })
+      .catch((error) => { console.error('Failed to load documents from API:', error); if (!cancelled) setSaveStatus('error'); })
+      .finally(() => { if (!cancelled) setIsLoadingDocuments(false); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const setCurrentDocId = useCallback((id: string | null) => {
-    if (providerRef.current?.awareness) {
-      const awareness = providerRef.current.awareness;
-      const localState = awareness.getLocalState();
-      if (localState && localState.user) {
-        awareness.setLocalStateField('user', {
-          ...localState.user,
-          currentDocId: id,
-          lastActive: Date.now(),
-        });
-      }
-    }
+    const awareness = providerRef.current?.awareness;
+    const current = awareness?.getLocalState()?.user;
+    if (awareness && current) awareness.setLocalStateField('user', { ...current, currentDocId: id, lastActive: Date.now() });
   }, []);
 
-  const createItem = (type: 'canvas' | 'doc' | 'file', title?: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return '';
-    const newId = (type === 'canvas' ? 'canvas-' : 'doc-') + generateId();
-    const newDoc: DocumentMeta = {
-      id: newId,
-      title: title || (type === 'canvas' ? 'Untitled Canvas' : 'Untitled Document'),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      isFavorite: false,
-      createdBy: user?.name || 'Tanvi',
-      type,
+  const createItem = useCallback(async (type: 'canvas' | 'doc' | 'file', title?: string): Promise<string> => {
+    if (type === 'file') return '';
+    const resolvedTitle = title?.trim() || (type === 'canvas' ? 'Untitled Canvas' : 'Untitled Document');
+    try {
+      const newDocument = await createDocumentApi(type, resolvedTitle, user?.name ?? 'Unknown');
+      setDocuments((previous) => ({ ...previous, [newDocument.id]: newDocument }));
+      return newDocument.id;
+    } catch (error) { setSaveStatus('error'); throw error; }
+  }, [user]);
+
+  const uploadFile = useCallback(async (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const localFilesMap = localFilesMapRef.current;
+      if (!localFilesMap || !ydocRef.current) return reject(new Error('Local persistence is not initialized'));
+      const id = createLocalFileId();
+      ydocRef.current.transact(() => localFilesMap.set(id, {
+        id, title: file.name, type: 'file', isFavorite: false, createdAt: Date.now(), updatedAt: Date.now(), createdBy: user?.name ?? 'Unknown',
+        fileData: { name: file.name, size: file.size, mimeType: file.type, blobUrl: event.target?.result as string },
+      }));
+      resolve(id);
     };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  }), [user]);
 
-    ydocRef.current.transact(() => {
-      documentsMapRef.current?.set(newId, newDoc);
-    });
-    return newId;
-  };
+  const updateLocalFile = useCallback((id: string, update: (file: DocumentMeta) => DocumentMeta) => {
+    const file = localFilesMapRef.current?.get(id);
+    if (file && ydocRef.current) ydocRef.current.transact(() => localFilesMapRef.current?.set(id, update(file)));
+  }, []);
 
-  const uploadFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (!documentsMapRef.current || !ydocRef.current) {
-          reject(new Error('CRDT not initialized'));
-          return;
-        }
-        const newId = 'file-' + generateId();
-        const dataUrl = e.target?.result as string;
+  const updateDocumentTitle = useCallback(async (id: string, title: string) => {
+    const existing = documents[id];
+    if (!existing) return;
+    if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, title, updatedAt: Date.now() }));
+    setDocuments((previous) => ({ ...previous, [id]: { ...existing, title, updatedAt: Date.now() } }));
+    try { await updateDocumentApi(id, { title }, user?.name ?? ''); }
+    catch (error) { console.error('Failed to update document title:', error); setDocuments((previous) => ({ ...previous, [id]: existing })); }
+  }, [documents, updateLocalFile, user]);
 
-        const newDoc: DocumentMeta = {
-          id: newId,
-          title: file.name,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isFavorite: false,
-          createdBy: user?.name || 'Tanvi',
-          type: 'file',
-          fileData: {
-            name: file.name,
-            size: file.size,
-            mimeType: file.type,
-            blobUrl: dataUrl
-          }
-        };
+  const toggleFavorite = useCallback(async (id: string) => {
+    const existing = documents[id];
+    if (!existing) return;
+    if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, isFavorite: !file.isFavorite, updatedAt: Date.now() }));
+    const isFavorite = !existing.isFavorite;
+    setDocuments((previous) => ({ ...previous, [id]: { ...existing, isFavorite, updatedAt: Date.now() } }));
+    try { await updateDocumentApi(id, { isFavorite }, user?.name ?? ''); }
+    catch (error) { console.error('Failed to toggle favorite:', error); setDocuments((previous) => ({ ...previous, [id]: existing })); }
+  }, [documents, updateLocalFile, user]);
 
-        ydocRef.current.transact(() => {
-          documentsMapRef.current?.set(newId, newDoc);
-        });
-        resolve(newId);
-      };
-      reader.onerror = (e) => reject(e);
-      reader.readAsDataURL(file);
-    });
-  };
+  const moveToTrash = useCallback(async (id: string) => {
+    const existing = documents[id];
+    if (!existing) return;
+    const now = Date.now();
+    if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, isDeleted: true, deletedAt: now, updatedAt: now }));
+    setDocuments((previous) => ({ ...previous, [id]: { ...existing, isDeleted: true, deletedAt: now, updatedAt: now } }));
+    try { await updateDocumentApi(id, { isDeleted: true, deletedAt: new Date(now).toISOString() }, user?.name ?? ''); }
+    catch (error) { console.error('Failed to move to trash:', error); setDocuments((previous) => ({ ...previous, [id]: existing })); }
+  }, [documents, updateLocalFile, user]);
 
-  const deleteDocument = (id: string) => {
-    moveToTrash(id); // Default delete goes to trash now
-  };
+  const deleteDocument = useCallback(async (id: string) => { await moveToTrash(id); }, [moveToTrash]);
 
-  const moveToTrash = (id: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    const existing = documentsMapRef.current.get(id);
-    if (existing) {
-      ydocRef.current.transact(() => {
-        documentsMapRef.current?.set(id, { ...existing, isDeleted: true, deletedAt: Date.now(), updatedAt: Date.now() });
-      });
-    }
-  };
+  const restoreFromTrash = useCallback(async (id: string) => {
+    const existing = documents[id];
+    if (!existing) return;
+    const restore = (item: DocumentMeta): DocumentMeta => { const { deletedAt: _deletedAt, ...rest } = item; return { ...rest, isDeleted: false, updatedAt: Date.now() }; };
+    if (existing.type === 'file') return updateLocalFile(id, restore);
+    const restored = restore(existing);
+    setDocuments((previous) => ({ ...previous, [id]: restored }));
+    try { await updateDocumentApi(id, { isDeleted: false }, user?.name ?? ''); }
+    catch (error) { console.error('Failed to restore document:', error); setDocuments((previous) => ({ ...previous, [id]: existing })); }
+  }, [documents, updateLocalFile, user]);
 
-  const restoreFromTrash = (id: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    const existing = documentsMapRef.current.get(id);
-    if (existing) {
-      ydocRef.current.transact(() => {
-        const updated = { ...existing, isDeleted: false, updatedAt: Date.now() };
-        delete updated.deletedAt;
-        documentsMapRef.current?.set(id, updated);
-      });
-    }
-  };
+  const permanentlyDelete = useCallback(async (id: string) => {
+    const existing = documents[id];
+    if (!existing) return;
+    if (existing.type === 'file') { ydocRef.current?.transact(() => localFilesMapRef.current?.delete(id)); return; }
+    setDocuments((previous) => { const next = { ...previous }; delete next[id]; return next; });
+    try { await deleteDocumentApi(id); }
+    catch (error) { console.error('Failed to permanently delete document:', error); setDocuments((previous) => ({ ...previous, [id]: existing })); }
+  }, [documents]);
 
-  const permanentlyDelete = (id: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    ydocRef.current.transact(() => {
-      documentsMapRef.current?.delete(id);
-    });
-  };
-
-  const emptyTrash = () => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    ydocRef.current.transact(() => {
-      const idsToDelete: string[] = [];
-      documentsMapRef.current?.forEach((meta, id) => {
-        if (meta.isDeleted) idsToDelete.push(id);
-      });
-      idsToDelete.forEach(id => documentsMapRef.current?.delete(id));
-    });
-  };
-
-  const toggleFavorite = (id: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    const existing = documentsMapRef.current.get(id);
-    if (existing) {
-      ydocRef.current.transact(() => {
-        documentsMapRef.current?.set(id, { ...existing, isFavorite: !existing.isFavorite, updatedAt: Date.now() });
-      });
-    }
-  };
-
-  const updateDocumentTitle = (id: string, title: string) => {
-    if (!documentsMapRef.current || !ydocRef.current) return;
-    const existing = documentsMapRef.current.get(id);
-    if (existing) {
-      ydocRef.current.transact(() => {
-        documentsMapRef.current?.set(id, {
-          ...existing,
-          title,
-          updatedAt: Date.now(),
-          lastModifiedBy: { name: user?.name || 'Tanvi', id: CURRENT_USER_ID }
-        });
-      });
-    }
-  };
+  const emptyTrash = useCallback(async () => {
+    await Promise.all(Object.values(documents).filter((item) => item.isDeleted).map((item) => permanentlyDelete(item.id)));
+  }, [documents, permanentlyDelete]);
 
   return (
     <WorkspaceContext.Provider value={{
-      documents,
-      createItem,
-      uploadFile,
-      deleteDocument,
-      moveToTrash,
-      restoreFromTrash,
-      permanentlyDelete,
-      emptyTrash,
-      toggleFavorite,
-      updateDocumentTitle,
-      saveStatus,
-      activeUsersByDoc,
-
-      // Stubs
-      blocks: {},
-      updateBlock: () => { },
-      toggleChecklist: () => { },
-      addBlock: () => { },
-      deleteBlock: () => { },
-      canvasItems: {},
-      updateCanvasItem: () => { },
-      deleteCanvasItem: () => { },
-      addCanvasItem: () => { },
-      setCurrentDocId,
+      documents, isLoadingDocuments, createItem, uploadFile, deleteDocument, moveToTrash, restoreFromTrash, permanentlyDelete,
+      emptyTrash, toggleFavorite, updateDocumentTitle, saveStatus, activeUsersByDoc,
+      blocks: {}, updateBlock: () => {}, toggleChecklist: () => {}, addBlock: () => {}, deleteBlock: () => {},
+      canvasItems: {}, updateCanvasItem: () => {}, deleteCanvasItem: () => {}, addCanvasItem: () => {}, setCurrentDocId,
     }}>
       {children}
     </WorkspaceContext.Provider>

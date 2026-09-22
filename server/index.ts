@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { authRouter } from './routes/auth';
+import { documentsRouter } from './routes/documents';
 
 const app = express();
 
@@ -25,6 +26,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 // Mount authentication routes
 app.use('/api/auth', authRouter);
+
+// Mount document routes (protected by requireAuth inside the router)
+app.use('/api/documents', documentsRouter);
 
 // Global unhandled error middleware
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
