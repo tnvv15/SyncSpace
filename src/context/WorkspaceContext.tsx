@@ -31,7 +31,7 @@ export type WorkspaceContextType = {
   updateDocumentTitle: (id: string, title: string) => void;
   saveStatus: SyncStatus;
   activeUsersByDoc: Record<string, UserPresence[]>;
-  
+
   // Stubbing these for now so we don't break existing destructurings 
   // before the Editor is refactored in a later step.
   blocks?: any;
@@ -55,7 +55,8 @@ function generateId() {
 }
 
 const DEFAULT_WS_URL = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:1234';
-
+console.log("SYNCSPACE WS URL =", DEFAULT_WS_URL);
+console.log("RAW VITE_WS_URL =", (import.meta as any).env?.VITE_WS_URL);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Record<string, DocumentMeta>>({});
   const [saveStatus, setSaveStatus] = useState<SyncStatus>('syncing');
@@ -82,7 +83,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const docsRecord: Record<string, DocumentMeta> = {};
       documentsMap.forEach((meta, id) => {
         if (meta && typeof meta === 'object') {
-            docsRecord[id] = meta;
+          docsRecord[id] = meta;
         }
       });
       setDocuments(docsRecord);
@@ -116,7 +117,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       awareness.on('change', () => {
         const states = awareness.getStates();
         const usersByDoc: Record<string, UserPresence[]> = {};
-        
+
         states.forEach((state) => {
           if (state.user && state.user.currentDocId) {
             if (!usersByDoc[state.user.currentDocId]) {
@@ -172,7 +173,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       createdBy: user?.name || 'Tanvi',
       type,
     };
-    
+
     ydocRef.current.transact(() => {
       documentsMapRef.current?.set(newId, newDoc);
     });
@@ -189,7 +190,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         const newId = 'file-' + generateId();
         const dataUrl = e.target?.result as string;
-        
+
         const newDoc: DocumentMeta = {
           id: newId,
           title: file.name,
@@ -205,7 +206,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             blobUrl: dataUrl
           }
         };
-        
+
         ydocRef.current.transact(() => {
           documentsMapRef.current?.set(newId, newDoc);
         });
@@ -275,9 +276,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const existing = documentsMapRef.current.get(id);
     if (existing) {
       ydocRef.current.transact(() => {
-        documentsMapRef.current?.set(id, { 
-          ...existing, 
-          title, 
+        documentsMapRef.current?.set(id, {
+          ...existing,
+          title,
           updatedAt: Date.now(),
           lastModifiedBy: { name: user?.name || 'Tanvi', id: CURRENT_USER_ID }
         });
@@ -299,17 +300,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updateDocumentTitle,
       saveStatus,
       activeUsersByDoc,
-      
+
       // Stubs
       blocks: {},
-      updateBlock: () => {},
-      toggleChecklist: () => {},
-      addBlock: () => {},
-      deleteBlock: () => {},
+      updateBlock: () => { },
+      toggleChecklist: () => { },
+      addBlock: () => { },
+      deleteBlock: () => { },
       canvasItems: {},
-      updateCanvasItem: () => {},
-      deleteCanvasItem: () => {},
-      addCanvasItem: () => {},
+      updateCanvasItem: () => { },
+      deleteCanvasItem: () => { },
+      addCanvasItem: () => { },
       setCurrentDocId,
     }}>
       {children}

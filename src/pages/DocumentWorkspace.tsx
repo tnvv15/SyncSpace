@@ -31,27 +31,23 @@ import {
 import { DocumentFormattingBar } from '../components/DocumentFormattingBar';
 import { DocumentInspector } from '../components/DocumentInspector';
 import { SlashCommandMenu, SlashCommandItem } from '../components/SlashCommandMenu';
+import { useParams } from 'react-router-dom';
 import { CoverPickerModal } from '../components/document/CoverPickerModal';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useDocumentUI } from '../context/DocumentUIContext';
+import { useDocumentYjs } from '../hooks/useDocumentYjs';
 
 export interface DocumentWorkspaceProps {
   workspaceState?: ReturnType<typeof useWorkspace>;
   showTopBar?: boolean;
+  documentId?: string;
 }
 
-const INITIAL_BLOCKS: DocumentBlock[] = [
-  {
-    id: 'b1',
-    type: 'paragraph',
-    content: '',
-  }
-];
-
-export function DocumentWorkspace({ workspaceState, showTopBar = false }: DocumentWorkspaceProps) {
+export function DocumentWorkspace({ workspaceState, showTopBar = false, documentId }: DocumentWorkspaceProps) {
+  const { id: routeDocId } = useParams<{ id: string }>();
+  const currentDocId = documentId || workspaceState?.currentDocId || routeDocId || '';
+  const currentDocMeta = currentDocId && workspaceState?.documents ? workspaceState.documents[currentDocId] : undefined;
   const docUI = useDocumentUI();
-  const currentDocId = workspaceState?.currentDocId;
-  const currentDocMeta = currentDocId ? workspaceState?.documents[currentDocId] : undefined;
 
   // Document Title & Core State
   const [docTitle, setDocTitle] = useState(currentDocMeta?.title || 'Untitled Document');
@@ -91,43 +87,38 @@ export function DocumentWorkspace({ workspaceState, showTopBar = false }: Docume
     }
   }, []);
 
-  // Blocks & Slash Menu
-  const [blocks, setBlocks] = useState<DocumentBlock[]>(INITIAL_BLOCKS);
+  // Yjs CRDT Document Synchronization Hook (Single source of truth)
+  const {
+    blocks,
+    updateBlock,
+    addBlock,
+    deleteBlock,
+    toggleChecklist,
+    connectionStatus,
+    isIndexedDbSynced,
+  } = useDocumentYjs({
+    documentId: currentDocId,
+  });
+
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashBlockId, setSlashBlockId] = useState<string | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
 
-  // Block handlers
+  // Block handlers delegating directly to Yjs transactions
   const handleUpdateBlock = (id: string, content: string, extra?: Partial<DocumentBlock>) => {
-    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, content, ...extra } : b)));
+    updateBlock(id, content, extra);
   };
 
   const handleAddBlock = (type: BlockType = 'paragraph', afterId?: string) => {
-    const newBlock: DocumentBlock = {
-      id: `b_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      type,
-      content: '',
-      checked: false,
-    };
-
-    setBlocks(prev => {
-      if (!afterId) return [...prev, newBlock];
-      const idx = prev.findIndex(b => b.id === afterId);
-      if (idx === -1) return [...prev, newBlock];
-      return [...prev.slice(0, idx + 1), newBlock, ...prev.slice(idx + 1)];
-    });
+    addBlock(type, afterId);
   };
 
   const handleDeleteBlock = (id: string) => {
-    if (blocks.length <= 1) {
-      setBlocks([{ id: 'b1', type: 'paragraph', content: '' }]);
-      return;
-    }
-    setBlocks(prev => prev.filter(b => b.id !== id));
+    deleteBlock(id);
   };
 
   const handleToggleCheck = (id: string) => {
-    setBlocks(prev => prev.map(b => (b.id === id ? { ...b, checked: !b.checked } : b)));
+    toggleChecklist(id);
   };
 
   const handleTitleChange = (newTitle: string) => {
@@ -539,8 +530,21 @@ export function DocumentWorkspace({ workspaceState, showTopBar = false }: Docume
           <span>{wordCount} words</span>
           <span>•</span>
           <div className="flex items-center gap-1 text-workspace-600 font-medium">
-            <span>Saved just now</span>
-            <CheckCircle2 size={14} className="text-emerald-500 fill-emerald-50" />
+            <span>
+              {isIndexedDbSynced
+                ? connectionStatus === 'connected'
+                  ? 'Synced live'
+                  : 'Saved offline'
+                : 'Saving...'}
+            </span>
+            <CheckCircle2
+              size={14}
+              className={
+                connectionStatus === 'connected'
+                  ? 'text-emerald-500 fill-emerald-50'
+                  : 'text-amber-500 fill-amber-50'
+              }
+            />
           </div>
         </div>
 

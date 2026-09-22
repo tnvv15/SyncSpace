@@ -88,7 +88,8 @@ export function ResetPassword() {
     try {
       await resetPasswordApi({ 
         token: token || '', 
-        password 
+        password,
+        confirmPassword,
       });
       setIsSuccess(true);
     } catch (err: unknown) {
