@@ -37,7 +37,7 @@ function getGreeting() {
 
 export function Dashboard() {
   const { user } = useAuth();
-  const { documents, createItem, uploadFile, deleteDocument, toggleFavorite, activeUsersByDoc, restoreFromTrash, permanentlyDelete, emptyTrash, updateDocumentTitle } = useWorkspace();
+  const { documents, isLoadingDocuments, createItem, uploadFile, deleteDocument, toggleFavorite, activeUsersByDoc, restoreFromTrash, permanentlyDelete, emptyTrash, updateDocumentTitle } = useWorkspace();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -56,14 +56,22 @@ export function Dashboard() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreateCanvas = () => {
-    const id = createItem('canvas');
-    navigate(`/workspace/${id}`);
+  const handleCreateCanvas = async () => {
+    try {
+      const id = await createItem('canvas');
+      navigate(`/workspace/${id}`);
+    } catch {
+      // createItem logs errors internally; surface nothing to avoid breaking UX
+    }
   };
 
-  const handleCreateDocument = () => {
-    const id = createItem('doc');
-    navigate(`/workspace/${id}`);
+  const handleCreateDocument = async () => {
+    try {
+      const id = await createItem('doc');
+      navigate(`/workspace/${id}`);
+    } catch {
+      // createItem logs errors internally; surface nothing to avoid breaking UX
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,7 +329,19 @@ export function Dashboard() {
             })}
           </div>
 
-          {allDocs.length === 0 && (
+          {isLoadingDocuments && (
+            <div className="flex items-center justify-center py-16">
+              <div className="flex items-center space-x-3 text-workspace-400">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                <span className="text-sm">Loading workspaces...</span>
+              </div>
+            </div>
+          )}
+
+          {!isLoadingDocuments && allDocs.length === 0 && (
             <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
                 <LayoutGrid className="text-workspace-400" size={32} />

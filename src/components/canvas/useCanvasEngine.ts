@@ -28,7 +28,11 @@ interface UseCanvasEngineOptions {
   currentUserColor?: string;
 }
 
-const DEFAULT_WS_URL = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:1234';
+// Keep the relay separate from the Express API. VITE_WS_URL is retained as a
+// backwards-compatible fallback for existing local setups.
+const DEFAULT_WS_URL = (import.meta as any).env?.VITE_YJS_WS_URL
+  || (import.meta as any).env?.VITE_WS_URL
+  || 'ws://localhost:1234';
 
 function generateUniqueId(prefix = 'elem'): string {
   return `${prefix}_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`;
@@ -76,7 +80,10 @@ export function useCanvasEngine({
 
   // Initialize Y.Doc, IndexedDB, WebSocket
   useEffect(() => {
-    const docName = `syncspace-canvas-${roomId || 'default'}`;
+    // The PostgreSQL document UUID is the only room identifier. Using the same
+    // name for IndexedDB and the relay means an offline document resumes into
+    // exactly the room it later synchronizes with.
+    const docName = `syncspace:${roomId || 'default'}`;
     const doc = new Y.Doc();
     ydocRef.current = doc;
 
@@ -93,23 +100,39 @@ export function useCanvasEngine({
       setElements(arr);
     };
 
-    idbProvider.on('synced', () => {
+    let indexedDbReady = false;
+    let websocketSynced = false;
+    let initialContentSeeded = false;
+
+    // Do not seed while a remote document may still be arriving: doing so would
+    // accidentally add the demo items to an existing collaborator's canvas.
+    const seedInitialContentIfNeeded = () => {
+      if (!indexedDbReady || !websocketSynced || initialContentSeeded || elementsMap.size !== 0) return;
+      initialContentSeeded = true;
+      doc.transact(() => {
+        INITIAL_DEMO_CANVAS_ITEMS.forEach((item) => {
+          elementsMap.set(item.id, item);
+        });
+      });
+    };
+
+    const handleIndexedDbSynced = () => {
+      indexedDbReady = true;
       setIsIndexedDbSynced(true);
       setSaveStatus('synced');
-
-      // Initialize with demo content if empty
-      if (elementsMap.size === 0) {
-        doc.transact(() => {
-          INITIAL_DEMO_CANVAS_ITEMS.forEach((item) => {
-            elementsMap.set(item.id, item);
-          });
-        });
-      }
+      seedInitialContentIfNeeded();
       syncElementsFromYjs();
-    });
+    };
+    idbProvider.on('synced', handleIndexedDbSynced);
+
+    // This observer is independent of transport availability, so canvas edits
+    // still render immediately when the relay is offline.
+    const handleElementsChange = () => syncElementsFromYjs();
+    elementsMap.observe(handleElementsChange);
 
     // 2. WebSocket Multiplayer
     let wsProvider: WebsocketProvider | null = null;
+    let cleanupAwareness: (() => void) | undefined;
     try {
       wsProvider = new WebsocketProvider(wsUrl, docName, doc, { connect: true });
       providerRef.current = wsProvider;
@@ -119,6 +142,17 @@ export function useCanvasEngine({
         if (event.status === 'connected') setSaveStatus('synced');
         else if (event.status === 'connecting') setSaveStatus('saving');
         else setSaveStatus('saved');
+      });
+
+      wsProvider.on('sync', (isSynced: boolean) => {
+        websocketSynced = isSynced;
+        if (isSynced) seedInitialContentIfNeeded();
+      });
+
+      wsProvider.on('connection-error', () => {
+        // The provider retries with backoff; IndexedDB remains fully usable.
+        setConnectionStatus('disconnected');
+        setSaveStatus('saved');
       });
 
       const awareness = wsProvider.awareness;
@@ -153,18 +187,24 @@ export function useCanvasEngine({
       };
 
       awareness.on('change', handleAwarenessChange);
+
+      cleanupAwareness = () => {
+        awareness.off('change', handleAwarenessChange);
+      };
     } catch (e) {
       console.warn('WebSocket connection fallback to local-only IndexedDB mode:', e);
       setConnectionStatus('disconnected');
     }
 
-    elementsMap.observe(() => {
-      syncElementsFromYjs();
-    });
-
     syncElementsFromYjs();
 
     return () => {
+      elementsMap.unobserve(handleElementsChange);
+      idbProvider.off('synced', handleIndexedDbSynced);
+      cleanupAwareness?.();
+      if (wsProvider) {
+        wsProvider.awareness.setLocalState(null);
+      }
       if (wsProvider) wsProvider.destroy();
       idbProvider.destroy();
       doc.destroy();

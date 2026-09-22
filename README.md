@@ -43,6 +43,12 @@ npm run dev
 ```
 Open `http://localhost:5173` in your browser.
 
+### 3. Run the Yjs relay (a separate process)
+```bash
+npm run yjs
+```
+It listens on `ws://localhost:1234`. The Express API remains on port 5000.
+
 ---
 
 ## 👥 Real-Time Peer Sync Testing
@@ -55,9 +61,16 @@ Open `http://localhost:5173` in your browser.
 ### Optional: Running a Local Y-Websocket Server
 To sync across different devices or separate browser instances:
 ```bash
-npx y-websocket
+npm run yjs
 ```
 This runs a local Yjs WebSocket relay on port `1234`. The app connects automatically to `ws://localhost:1234`!
+
+Each PostgreSQL canvas UUID maps to one isolated Yjs room named
+`syncspace:<document-id>`. Canvas elements are held in the Yjs
+`canvas-elements` map and mirrored into React for rendering. The same Y.Doc is
+persisted in IndexedDB, so local edits survive reloads and merge when the relay
+reconnects. The development relay deliberately has no room authorization;
+sharing and access control must be added before production use.
 
 ---
 
