@@ -51,6 +51,59 @@ It listens on `ws://localhost:1234`. The Express API remains on port 5000.
 
 ---
 
+## PostgreSQL configuration
+
+Prisma and the Express backend read their PostgreSQL connection from the
+backend-only `DATABASE_URL` environment variable. The database host is not
+hardcoded in application code.
+
+### Shared database for two PCs
+
+After you obtain a shared PostgreSQL database, create a private `.env` file on
+**each** PC (it is gitignored) using the exact same shared connection string:
+
+```dotenv
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+```
+
+Replace the placeholders with the connection details supplied by the database
+host. Do not put this value in `VITE_*` variables, frontend code, Git, or a
+committed `.env` file. `npm run server` loads this private `.env` for the
+Express backend. Apply the existing migrations to a new shared database once:
+
+```bash
+npx prisma migrate deploy
+```
+
+Run this against the shared database only after checking that `DATABASE_URL`
+points to it. It applies the tracked migrations without resetting or deleting
+database data. The current migrations already create users, password reset
+tokens, and documents; no new migration is needed for a host-only change.
+
+To verify the setup, register on one PC, then sign in with that same account
+on the other PC. A document created by that account should appear in its
+document list on both PCs. Documents remain owner-protected: a different user
+account will receive access denied unless document-sharing behavior is added
+separately. Yjs canvas content uses its existing WebSocket relay and is outside
+this PostgreSQL configuration; a relay at `localhost` is only local to one PC.
+
+### Local Docker fallback
+
+`docker-compose.yml` remains available for private local development and keeps
+its existing `postgres_data` volume. To use it, keep Docker running and use a
+private `.env` containing a local URL that matches its `POSTGRES_*` values:
+
+```dotenv
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=syncspace
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/syncspace?schema=public"
+```
+
+Do not run `docker compose down -v` when preserving local data.
+
+---
+
 ## 👥 Real-Time Peer Sync Testing
 
 ### Testing with Multi-Tabs (Default)
