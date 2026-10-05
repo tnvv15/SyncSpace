@@ -17,6 +17,7 @@ model User {
   updatedAt           DateTime             @updatedAt @map("updated_at")
   documents           Document[]
   passwordResetTokens PasswordResetToken[]
+  documentShares      DocumentShare[]
 
   @@index([email])
   @@map("users")
@@ -36,19 +37,41 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+enum DocumentPermission {
+  VIEWER
+  EDITOR
+}
+
+model DocumentShare {
+  id         String             @id @default(uuid())
+  documentId String             @map("document_id")
+  userId     String             @map("user_id")
+  permission DocumentPermission
+  createdAt  DateTime           @default(now()) @map("created_at")
+  document   Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId])
+  @@index([documentId])
+  @@index([userId])
+  @@map("document_shares")
+}
+
 model Document {
-  id         String    @id @default(uuid())
+  id         String          @id @default(uuid())
   title      String
   type       String
-  isFavorite Boolean   @default(false) @map("is_favorite")
-  isDeleted  Boolean   @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  userId     String    @map("user_id")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isFavorite Boolean         @default(false) @map("is_favorite")
+  isDeleted  Boolean         @default(false) @map("is_deleted")
+  deletedAt  DateTime?       @map("deleted_at")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+  userId     String          @map("user_id")
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares     DocumentShare[]
 
   @@index([userId])
   @@index([userId, isDeleted])
   @@map("documents")
 }
+

@@ -34,9 +34,13 @@ export interface DocumentFormattingBarProps {
   isInspectorOpen?: boolean;
   onToggleInspector?: () => void;
   documentTitle?: string;
+  documentId?: string;
+  isOwner?: boolean;
+  permission?: 'OWNER' | 'VIEWER' | 'EDITOR';
 }
 
 export function DocumentFormattingBar(props: DocumentFormattingBarProps) {
+
   const docUI = useDocumentUI();
 
   const currentHeading = props.currentHeading ?? docUI.currentHeading;
@@ -293,15 +297,22 @@ export function DocumentFormattingBar(props: DocumentFormattingBarProps) {
         {/* Right Actions: Share, More, Toggle Inspector */}
         <div className="flex items-center gap-2">
           
-          {/* Share Button (Solid Primary Teal) */}
-          <button
-            type="button"
-            onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors cursor-pointer"
-          >
-            <Share2 size={13} />
-            <span>Share</span>
-          </button>
+          {/* Share Button (Solid Primary Teal) - Only for Owner */}
+          {props.isOwner !== false ? (
+            <button
+              type="button"
+              onClick={() => setIsShareModalOpen(true)}
+              className="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors cursor-pointer"
+            >
+              <Share2 size={13} />
+              <span>Share</span>
+            </button>
+          ) : (
+            <div className="px-2.5 py-1 rounded-lg text-xs font-medium bg-workspace-100 text-workspace-700 border border-workspace-200 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-500"></span>
+              <span>{props.permission === 'VIEWER' ? 'Viewer' : 'Editor'}</span>
+            </div>
+          )}
 
           {/* More Actions (•••) */}
           <div className="relative">
@@ -366,8 +377,10 @@ export function DocumentFormattingBar(props: DocumentFormattingBarProps) {
       <ShareModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
+        documentId={props.documentId}
         documentTitle={props.documentTitle}
       />
+
 
       {/* Comments Drawer */}
       <CommentsDrawer

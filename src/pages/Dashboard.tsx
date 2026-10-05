@@ -5,6 +5,8 @@ import { FileText, Plus, Search, Star, Trash2, LayoutGrid, Users, Upload, FileIc
 import { Link, useNavigate } from 'react-router-dom';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { DocumentCard } from '../components/document/DocumentCard';
+import { ShareModal } from '../components/document/ShareModal';
+import type { DocumentMeta } from '../types/dashboard';
 
 function formatBytes(bytes: number, decimals = 2) {
   if (!+bytes) return '0 Bytes';
@@ -37,10 +39,24 @@ function getGreeting() {
 
 export function Dashboard() {
   const { user } = useAuth();
-  const { documents, isLoadingDocuments, createItem, uploadFile, deleteDocument, toggleFavorite, activeUsersByDoc, restoreFromTrash, permanentlyDelete, emptyTrash, updateDocumentTitle } = useWorkspace();
+  const {
+    documents,
+    isLoadingDocuments,
+    createItem,
+    uploadFile,
+    deleteDocument,
+    toggleFavorite,
+    activeUsersByDoc,
+    restoreFromTrash,
+    permanentlyDelete,
+    emptyTrash,
+    updateDocumentTitle,
+    refreshDocuments,
+  } = useWorkspace();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sharingDoc, setSharingDoc] = useState<DocumentMeta | null>(null);
 
 
   // Parse query params to set initial filter if present
@@ -119,11 +135,11 @@ export function Dashboard() {
     if (filter === 'files') return doc.type === 'file';
     if (filter === 'favorites') return doc.isFavorite;
     if (filter === 'shared') {
-      const activeUsers = activeUsersByDoc[doc.id] || [];
-      return doc.createdBy !== user?.name || activeUsers.length > 0;
+      return !!doc.isShared || doc.permission === 'VIEWER' || doc.permission === 'EDITOR';
     }
     return true;
   });
+
 
   const recentDocs = [...filteredDocs].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -324,9 +340,11 @@ export function Dashboard() {
                   onRestore={restoreFromTrash}
                   onPermanentlyDelete={permanentlyDelete}
                   onUpdateTitle={updateDocumentTitle}
+                  onShare={(d) => setSharingDoc(d)}
                 />
               );
             })}
+
           </div>
 
           {isLoadingDocuments && (
@@ -362,14 +380,14 @@ export function Dashboard() {
             </div>
           )}
 
-          {allDocs.length > 0 && recentDocs.length === 0 && filter === 'shared' && (
+          {!isLoadingDocuments && recentDocs.length === 0 && filter === 'shared' && (
             <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
                 <Users className="text-workspace-400" size={32} />
               </div>
               <h3 className="text-lg font-medium text-workspace-900 mb-1">No shared documents yet</h3>
               <p className="text-sm text-workspace-500 text-center max-w-sm">
-                Workspaces shared by other peers over the network will appear here.
+                Documents and canvases shared with you by other registered users will appear here.
               </p>
             </div>
           )}
@@ -425,6 +443,18 @@ export function Dashboard() {
           </button>
         </div>
       )}
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={!!sharingDoc}
+        onClose={() => {
+          setSharingDoc(null);
+          void refreshDocuments();
+        }}
+        documentId={sharingDoc?.id}
+        documentTitle={sharingDoc?.title}
+      />
     </div>
   );
+
 }

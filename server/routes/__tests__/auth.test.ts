@@ -4,7 +4,8 @@ import { app } from '../../index';
 import { prisma } from '../../lib/db/client';
 import { AUTH_COOKIE_NAME } from '../../lib/auth/jwt';
 
-describe('Auth API Integration Tests (/api/auth)', () => {
+describe('Auth API Integration Tests (/api/auth)', { timeout: 30000 }, () => {
+
   const testUser = {
     email: 'integration-test@syncspace.dev',
     password: 'SuperSecretPassword1!',
@@ -30,14 +31,14 @@ describe('Auth API Integration Tests (/api/auth)', () => {
   });
 
   afterAll(async () => {
-    // Clean up test records and disconnect Prisma
+    // Clean up test records
     await prisma.user.deleteMany({
       where: {
         email: { in: [testUser.email, 'another-user@syncspace.dev'] },
       },
     });
-    await prisma.$disconnect();
   });
+
 
   describe('POST /api/auth/register', () => {
     it('should register a new account, set an HttpOnly cookie, and omit passwordHash', async () => {

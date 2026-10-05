@@ -20,6 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { UserPresence } from '../../types/canvas';
 import { MOCK_USERS, CURRENT_USER_ID } from '../../data/mockData';
+import { ShareModal } from '../document/ShareModal';
 
 interface CanvasTopBarProps {
   title: string;
@@ -41,7 +42,11 @@ interface CanvasTopBarProps {
   showGrid: boolean;
   onToggleGrid: () => void;
   onOpenHelpModal: () => void;
+  documentId?: string;
+  isOwner?: boolean;
+  permission?: 'OWNER' | 'VIEWER' | 'EDITOR';
 }
+
 
 export const CanvasTopBar: React.FC<CanvasTopBarProps> = ({
   title,
@@ -63,8 +68,12 @@ export const CanvasTopBar: React.FC<CanvasTopBarProps> = ({
   showGrid,
   onToggleGrid,
   onOpenHelpModal,
+  documentId,
+  isOwner,
+  permission,
 }) => {
   const navigate = useNavigate();
+
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState(title);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -258,15 +267,23 @@ export const CanvasTopBar: React.FC<CanvasTopBarProps> = ({
             </div>
           </div>
 
-          {/* Share Button */}
-          <button
-            type="button"
-            onClick={() => setShowShareModal(true)}
-            className="flex items-center space-x-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-2xs"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share</span>
-          </button>
+          {/* Share Button (Owner only) or Permission Badge */}
+          {isOwner !== false ? (
+            <button
+              type="button"
+              onClick={() => setShowShareModal(true)}
+              className="flex items-center space-x-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share</span>
+            </button>
+          ) : (
+            <div className="px-2.5 py-1 rounded-lg text-xs font-medium bg-workspace-100 text-workspace-700 border border-workspace-200 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-500"></span>
+              <span>{permission === 'VIEWER' ? 'Viewer' : 'Editor'}</span>
+            </div>
+          )}
+
 
           {/* More Options Dropdown */}
           <div className="relative">
@@ -399,70 +416,13 @@ export const CanvasTopBar: React.FC<CanvasTopBarProps> = ({
       </header>
 
       {/* Share Modal Dialog */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-workspace-200 shadow-xl max-w-md w-full p-6 space-y-4 animate-scale-up">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
-                  <Share2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-workspace-900">Share Canvas</h3>
-                  <p className="text-xs text-workspace-500">Collaborate live with peers in real-time</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="text-workspace-400 hover:text-workspace-700 text-lg font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        documentId={documentId}
+        documentTitle={title}
+      />
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-workspace-700">Workspace Room Link</label>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={window.location.href}
-                  className="flex-1 bg-workspace-50 border border-workspace-200 rounded-lg px-3 py-2 text-xs text-workspace-800 outline-none select-all"
-                />
-                <button
-                  type="button"
-                  onClick={handleShareCopy}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors shadow-2xs"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </button>
-              </div>
-              {copyToast && (
-                <p className="text-xs text-emerald-600 font-medium flex items-center space-x-1">
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Link copied to clipboard! Share it with your team.</span>
-                </p>
-              )}
-            </div>
-
-            <div className="bg-workspace-50 rounded-xl p-3 border border-workspace-100 text-xs text-workspace-600 space-y-1">
-              <p className="font-semibold text-workspace-800">⚡ Real-Time Collaboration</p>
-              <p>Anyone with this link can view and collaborate on this whiteboard instantly via CRDT synchronization.</p>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowShareModal(false)}
-                className="px-4 py-2 bg-workspace-100 hover:bg-workspace-200 text-workspace-700 rounded-lg text-xs font-medium transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };

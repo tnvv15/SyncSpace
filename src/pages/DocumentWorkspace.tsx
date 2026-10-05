@@ -205,7 +205,13 @@ export function DocumentWorkspace({ workspaceState, showTopBar = false, document
     <div className="flex flex-col h-full w-full bg-white text-workspace-900 overflow-hidden font-sans select-text">
       
       {/* Document Formatting Bar directly on top of document */}
-      <DocumentFormattingBar documentTitle={docTitle} />
+      <DocumentFormattingBar
+        documentId={currentDocId}
+        documentTitle={docTitle}
+        isOwner={!currentDocMeta?.isShared && (!currentDocMeta?.permission || currentDocMeta?.permission === 'OWNER')}
+        permission={currentDocMeta?.permission || 'OWNER'}
+      />
+
 
       {/* Main Document Writing Surface & Right Inspector */}
       <div className="flex-1 flex overflow-hidden relative">

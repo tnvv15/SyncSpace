@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, LayoutGrid, FileIcon, Trash2, RotateCcw, Download, Star, Users, Clock, Edit2 } from 'lucide-react';
+import { FileText, LayoutGrid, FileIcon, Trash2, RotateCcw, Download, Star, Users, Clock, Edit2, Share2 } from 'lucide-react';
 import { DocumentMeta, UserPresence } from '../../types/dashboard';
 
 // Helpers
@@ -37,6 +37,7 @@ type DocumentCardProps = {
   onRestore: (id: string) => void;
   onPermanentlyDelete: (id: string) => void;
   onUpdateTitle: (id: string, title: string) => void;
+  onShare?: (doc: DocumentMeta) => void;
   showSelection: boolean;
 };
 
@@ -52,8 +53,10 @@ export function DocumentCard({
   onRestore,
   onPermanentlyDelete,
   onUpdateTitle,
+  onShare,
   showSelection
 }: DocumentCardProps) {
+
   const isCanvas = doc.type === 'canvas';
   const isFile = doc.type === 'file';
   const isImage = isFile && doc.fileData?.mimeType.startsWith('image/');
@@ -119,6 +122,8 @@ export function DocumentCard({
     );
   };
 
+  const isOwner = !doc.isShared && (!doc.permission || doc.permission === 'OWNER');
+
   return (
     <div className="group flex flex-col border border-workspace-200 rounded-xl hover:border-primary-300 hover:shadow-panel transition-all bg-white relative overflow-hidden">
       
@@ -149,6 +154,13 @@ export function DocumentCard({
           {isCanvas ? <LayoutGrid size={12} /> : isFile ? <FileIcon size={12} /> : <FileText size={12} />}
           <span className="capitalize">{isFile && doc.fileData ? doc.fileData.mimeType.split('/')[1] || 'File' : doc.type}</span>
         </div>
+
+        {/* Permission Badge for shared documents */}
+        {!isOwner && doc.permission && (
+          <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center space-x-1 shadow-sm z-10 text-primary-700 border-primary-200">
+            <span>{doc.permission === 'VIEWER' ? 'Viewer' : 'Editor'}</span>
+          </div>
+        )}
 
         {/* Quick Actions (Hover) */}
         <div className="absolute top-3 right-3 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -186,23 +198,41 @@ export function DocumentCard({
                   <Download size={16} />
                 </a>
               )}
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleFavorite(doc.id); }}
-                className={`p-1.5 rounded-md bg-white shadow-sm border border-workspace-200 transition-colors ${doc.isFavorite ? 'text-amber-400 hover:bg-amber-50' : 'text-neutral-400 hover:text-amber-400 hover:bg-amber-50'}`}
-                title={doc.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                <Star size={16} className={doc.isFavorite ? 'fill-amber-400' : ''} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onDelete(doc.id);
-                }}
-                className="p-1.5 bg-white shadow-sm border border-workspace-200 text-workspace-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-              >
-                <Trash2 size={16} />
-              </button>
+              {isOwner && onShare && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onShare(doc);
+                  }}
+                  className="p-1.5 rounded-md bg-white shadow-sm border border-workspace-200 text-workspace-500 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                  title="Share"
+                >
+                  <Share2 size={16} />
+                </button>
+              )}
+              {isOwner && (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleFavorite(doc.id); }}
+                  className={`p-1.5 rounded-md bg-white shadow-sm border border-workspace-200 transition-colors ${doc.isFavorite ? 'text-amber-400 hover:bg-amber-50' : 'text-neutral-400 hover:text-amber-400 hover:bg-amber-50'}`}
+                  title={doc.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <Star size={16} className={doc.isFavorite ? 'fill-amber-400' : ''} />
+                </button>
+              )}
+              {isOwner && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDelete(doc.id);
+                  }}
+                  className="p-1.5 bg-white shadow-sm border border-workspace-200 text-workspace-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                  title="Move to trash"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -248,21 +278,32 @@ export function DocumentCard({
                   {doc.title}
                 </h3>
               </Link>
-              <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsEditingTitle(true);
-                }}
-                className="ml-2 opacity-0 group-hover/title:opacity-100 text-workspace-400 hover:text-primary-600 p-1 rounded hover:bg-workspace-100"
-                title="Rename"
-              >
-                <Edit2 size={14} />
-              </button>
+              {doc.permission !== 'VIEWER' && (
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsEditingTitle(true);
+                  }}
+                  className="ml-2 opacity-0 group-hover/title:opacity-100 text-workspace-400 hover:text-primary-600 p-1 rounded hover:bg-workspace-100"
+                  title="Rename"
+                >
+                  <Edit2 size={14} />
+                </button>
+              )}
             </div>
           )}
           
-          <div className="flex items-center space-x-2 text-xs text-workspace-500 mt-1">
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-xs text-workspace-500 mt-1">
+            {!isOwner && (
+              <>
+                <span className="flex items-center text-primary-700 font-medium">
+                  <Users size={12} className="mr-1" />
+                  Shared by {doc.owner?.name || doc.createdBy}
+                </span>
+                <span>&bull;</span>
+              </>
+            )}
             {doc.lastModifiedBy ? (
               <span className="flex items-center">
                 <Clock size={12} className="mr-1"/> 
@@ -282,6 +323,7 @@ export function DocumentCard({
             )}
           </div>
         </div>
+
 
         {/* Live Presence */}
         <div className="mt-4 flex items-center h-6">

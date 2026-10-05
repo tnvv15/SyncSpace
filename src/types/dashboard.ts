@@ -15,6 +15,47 @@ export interface DocumentMeta {
   isDeleted?: boolean;
   deletedAt?: number;
   lastModifiedBy?: { name: string; id: string };
+  permission?: 'OWNER' | 'VIEWER' | 'EDITOR';
+  owner?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  isShared?: boolean;
+}
+
+export type DocumentPermission = 'VIEWER' | 'EDITOR';
+
+export interface DocumentShareInfo {
+  id: string;
+  documentId: string;
+  userId: string;
+  permission: DocumentPermission;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface SharedDocumentItem {
+  id: string;
+  title: string;
+  type: 'canvas' | 'doc';
+  isFavorite: boolean;
+  isDeleted: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  permission: DocumentPermission;
+  owner: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
@@ -26,3 +67,4 @@ export interface UserPresence {
   currentDocId: string | null;
   lastActive: number;
 }
+

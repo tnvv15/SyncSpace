@@ -41,9 +41,12 @@ export function CanvasBoard({ workspaceState }: CanvasBoardProps) {
   const { currentDocId, documents, updateDocumentTitle } = workspaceState;
   const { user } = useAuth();
 
-  const docTitle = currentDocId && documents[currentDocId] ? documents[currentDocId].title : 'Architecture Whiteboard';
+  const currentDocMeta = currentDocId ? documents[currentDocId] : undefined;
+  const isOwner = !currentDocMeta?.isShared && (!currentDocMeta?.permission || currentDocMeta?.permission === 'OWNER');
+  const docTitle = currentDocMeta ? currentDocMeta.title : 'Architecture Whiteboard';
 
   // Canvas State Engine
+
   const engine = useCanvasEngine({
     roomId: currentDocId || 'main',
     currentUserName: user?.name || 'Tanvi',
@@ -971,7 +974,11 @@ export function CanvasBoard({ workspaceState }: CanvasBoardProps) {
         showGrid={showGrid}
         onToggleGrid={() => setShowGrid(!showGrid)}
         onOpenHelpModal={() => setIsHelpOpen(true)}
+        documentId={currentDocId || undefined}
+        isOwner={isOwner}
+        permission={currentDocMeta?.permission || (isOwner ? 'OWNER' : undefined)}
       />
+
 
       {/* Main Canvas Surface */}
       <div

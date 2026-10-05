@@ -13,6 +13,9 @@ export function Workspace() {
   const doc = id ? documents[id] : undefined;
   const type = doc?.type || 'doc'; // Default to doc if not found
 
+  const [isFetchingDirect, setIsFetchingDirect] = React.useState(false);
+  const [fetchAttempted, setFetchAttempted] = React.useState(false);
+
   React.useEffect(() => {
     if (id) {
       setCurrentDocId(id);
@@ -22,8 +25,57 @@ export function Workspace() {
     };
   }, [id, setCurrentDocId]);
 
+  React.useEffect(() => {
+    if (id && !doc && !workspaceState.isLoadingDocuments && !fetchAttempted) {
+      setIsFetchingDirect(true);
+      workspaceState.loadDocument(id).finally(() => {
+        setIsFetchingDirect(false);
+        setFetchAttempted(true);
+      });
+    }
+  }, [id, doc, workspaceState.isLoadingDocuments, fetchAttempted, workspaceState]);
+
   if (!id) return <Navigate to="/dashboard" replace />;
-  if (!doc) return <div className="flex items-center justify-center h-full text-workspace-500">Loading document...</div>;
+  
+  if (workspaceState.isLoadingDocuments || isFetchingDirect) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-workspace-500 gap-3">
+        <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm">Loading document...</span>
+      </div>
+    );
+  }
+
+
+  if (!doc) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-workspace-50">
+        <div className="max-w-md bg-white p-8 rounded-2xl border border-workspace-200 shadow-sm">
+          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <FileText size={24} />
+          </div>
+          <h3 className="text-lg font-semibold text-workspace-900 mb-2">Document Unavailable</h3>
+          <p className="text-sm text-workspace-600 mb-6 leading-relaxed">
+            This document cannot be accessed. If someone shared this workspace link with you, please make sure you are signed in to the correct account.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href="/login"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Sign In
+            </a>
+            <a
+              href="/dashboard"
+              className="px-4 py-2 bg-workspace-100 hover:bg-workspace-200 text-workspace-700 rounded-lg text-sm font-medium transition-colors"
+            >
+              Go to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white relative">

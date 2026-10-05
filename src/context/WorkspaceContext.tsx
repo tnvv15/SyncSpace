@@ -4,7 +4,14 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 import { WebsocketProvider } from 'y-websocket';
 import type { DocumentMeta, SyncStatus, UserPresence } from '../types/dashboard';
 import { useAuth } from '../auth/AuthContext';
-import { listDocumentsApi, createDocumentApi, updateDocumentApi, deleteDocumentApi } from '../lib/api/documents';
+import {
+  listDocumentsApi,
+  createDocumentApi,
+  updateDocumentApi,
+  deleteDocumentApi,
+  getSharedDocumentsApi,
+  getDocumentApi,
+} from '../lib/api/documents';
 
 export type CanvasItem = { id: string; type: string; x: number; y: number; w?: number; h?: number; r?: number; text?: string; color?: string };
 
@@ -20,6 +27,8 @@ export type WorkspaceContextType = {
   deleteDocument: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
   updateDocumentTitle: (id: string, title: string) => Promise<void>;
+  refreshDocuments: () => Promise<void>;
+  loadDocument: (id: string) => Promise<DocumentMeta | null>;
   saveStatus: SyncStatus;
   activeUsersByDoc: Record<string, UserPresence[]>;
   blocks?: any; updateBlock?: any; toggleChecklist?: any; addBlock?: any; deleteBlock?: any;
@@ -27,6 +36,7 @@ export type WorkspaceContextType = {
   canvasItems?: any; updateCanvasItem?: any; deleteCanvasItem?: any; addCanvasItem?: any;
   setCurrentDocId: (id: string | null) => void;
 };
+
 
 export const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
 
@@ -119,7 +129,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }, [user]);
 
-  // PostgreSQL remains the source of truth for canvas/document metadata.
+  // Fetch both owned and shared documents from the API.
+  const refreshDocuments = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [ownedDocs, sharedDocs] = await Promise.all([
+        listDocumentsApi(user.name),
+        getSharedDocumentsApi(),
+      ]);
+      const allDocs = [...ownedDocs, ...sharedDocs];
+      const metadata = Object.fromEntries(allDocs.map((item) => [item.id, item]));
+      setDocuments((previous) => ({
+        ...metadata,
+        ...Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')),
+      }));
+    } catch (error) {
+      console.error('Failed to refresh documents:', error);
+    }
+  }, [user]);
+
+  const loadDocument = useCallback(async (id: string): Promise<DocumentMeta | null> => {
+    try {
+      const doc = await getDocumentApi(id, user?.name ?? '');
+      setDocuments((previous) => ({ ...previous, [doc.id]: doc }));
+      return doc;
+    } catch (error) {
+      console.error('Failed to load document metadata:', error);
+      return null;
+    }
+  }, [user]);
+
+  // Load owned and shared documents when user is authenticated.
   useEffect(() => {
     if (!user) {
       setDocuments((previous) => Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')));
@@ -128,14 +168,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     let cancelled = false;
     setIsLoadingDocuments(true);
-    void listDocumentsApi(user.name)
-      .then((apiDocuments) => {
+    void Promise.all([listDocumentsApi(user.name), getSharedDocumentsApi()])
+      .then(([ownedDocs, sharedDocs]) => {
         if (cancelled) return;
-        const metadata = Object.fromEntries(apiDocuments.map((item) => [item.id, item]));
-        setDocuments((previous) => ({ ...metadata, ...Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')) }));
+        const allDocs = [...ownedDocs, ...sharedDocs];
+        const metadata = Object.fromEntries(allDocs.map((item) => [item.id, item]));
+        setDocuments((previous) => ({
+          ...metadata,
+          ...Object.fromEntries(Object.entries(previous).filter(([, item]) => item.type === 'file')),
+        }));
       })
-      .catch((error) => { console.error('Failed to load documents from API:', error); if (!cancelled) setSaveStatus('error'); })
-      .finally(() => { if (!cancelled) setIsLoadingDocuments(false); });
+      .catch((error) => {
+        console.error('Failed to load documents from API:', error);
+        if (!cancelled) setSaveStatus('error');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingDocuments(false);
+      });
     return () => { cancelled = true; };
   }, [user]);
 
@@ -179,6 +228,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const updateDocumentTitle = useCallback(async (id: string, title: string) => {
     const existing = documents[id];
     if (!existing) return;
+    if (existing.permission === 'VIEWER') {
+      console.warn('Viewers cannot update document title');
+      return;
+    }
     if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, title, updatedAt: Date.now() }));
     setDocuments((previous) => ({ ...previous, [id]: { ...existing, title, updatedAt: Date.now() } }));
     try { await updateDocumentApi(id, { title }, user?.name ?? ''); }
@@ -188,6 +241,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const toggleFavorite = useCallback(async (id: string) => {
     const existing = documents[id];
     if (!existing) return;
+    if (existing.isShared || (existing.permission && existing.permission !== 'OWNER')) {
+      console.warn('Only document owners can update favorite status');
+      return;
+    }
     if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, isFavorite: !file.isFavorite, updatedAt: Date.now() }));
     const isFavorite = !existing.isFavorite;
     setDocuments((previous) => ({ ...previous, [id]: { ...existing, isFavorite, updatedAt: Date.now() } }));
@@ -198,6 +255,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const moveToTrash = useCallback(async (id: string) => {
     const existing = documents[id];
     if (!existing) return;
+    if (existing.isShared || (existing.permission && existing.permission !== 'OWNER')) {
+      console.warn('Only document owners can delete documents');
+      return;
+    }
     const now = Date.now();
     if (existing.type === 'file') return updateLocalFile(id, (file) => ({ ...file, isDeleted: true, deletedAt: now, updatedAt: now }));
     setDocuments((previous) => ({ ...previous, [id]: { ...existing, isDeleted: true, deletedAt: now, updatedAt: now } }));
@@ -210,6 +271,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const restoreFromTrash = useCallback(async (id: string) => {
     const existing = documents[id];
     if (!existing) return;
+    if (existing.isShared || (existing.permission && existing.permission !== 'OWNER')) {
+      console.warn('Only document owners can restore documents');
+      return;
+    }
     const restore = (item: DocumentMeta): DocumentMeta => { const { deletedAt: _deletedAt, ...rest } = item; return { ...rest, isDeleted: false, updatedAt: Date.now() }; };
     if (existing.type === 'file') return updateLocalFile(id, restore);
     const restored = restore(existing);
@@ -221,6 +286,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const permanentlyDelete = useCallback(async (id: string) => {
     const existing = documents[id];
     if (!existing) return;
+    if (existing.isShared || (existing.permission && existing.permission !== 'OWNER')) {
+      console.warn('Only document owners can permanently delete documents');
+      return;
+    }
     if (existing.type === 'file') { ydocRef.current?.transact(() => localFilesMapRef.current?.delete(id)); return; }
     setDocuments((previous) => { const next = { ...previous }; delete next[id]; return next; });
     try { await deleteDocumentApi(id); }
@@ -228,13 +297,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [documents]);
 
   const emptyTrash = useCallback(async () => {
-    await Promise.all(Object.values(documents).filter((item) => item.isDeleted).map((item) => permanentlyDelete(item.id)));
+    await Promise.all(
+      Object.values(documents)
+        .filter((item) => item.isDeleted && (!item.isShared || item.permission === 'OWNER'))
+        .map((item) => permanentlyDelete(item.id))
+    );
   }, [documents, permanentlyDelete]);
 
   return (
     <WorkspaceContext.Provider value={{
       documents, isLoadingDocuments, createItem, uploadFile, deleteDocument, moveToTrash, restoreFromTrash, permanentlyDelete,
-      emptyTrash, toggleFavorite, updateDocumentTitle, saveStatus, activeUsersByDoc,
+      emptyTrash, toggleFavorite, updateDocumentTitle, refreshDocuments, loadDocument, saveStatus, activeUsersByDoc,
       blocks: {}, updateBlock: () => {}, toggleChecklist: () => {}, addBlock: () => {}, deleteBlock: () => {},
       canvasItems: {}, updateCanvasItem: () => {}, deleteCanvasItem: () => {}, addCanvasItem: () => {}, setCurrentDocId,
     }}>

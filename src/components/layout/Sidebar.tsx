@@ -25,6 +25,8 @@ export function Sidebar() {
   const allDocs = Object.values(documents);
   const activeDocs = allDocs.filter(d => !d.isDeleted);
   const favorites = activeDocs.filter(d => d.isFavorite);
+  const sharedDocs = activeDocs.filter(d => !!d.isShared || d.permission === 'VIEWER' || d.permission === 'EDITOR');
+
 
   const handleLogout = () => {
     logout();
@@ -87,7 +89,19 @@ export function Sidebar() {
               ) : null
             }
           />
-          <SidebarItem icon={<Users size={18} />} label="Shared With Me" to="/dashboard?filter=shared" />
+          <SidebarItem
+            icon={<Users size={18} />}
+            label="Shared With Me"
+            to="/dashboard?filter=shared"
+            badge={
+              sharedDocs.length > 0 ? (
+                <div className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-workspace-200 text-workspace-600">
+                  {sharedDocs.length}
+                </div>
+              ) : null
+            }
+          />
+
           <SidebarItem icon={<Clock size={18} />} label="Recent Activity" to="/dashboard?filter=recent" />
           <SidebarItem icon={<Trash2 size={18} />} label="Trash" to="/dashboard?filter=trash" />
         </div>
