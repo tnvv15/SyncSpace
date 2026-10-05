@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Home,
@@ -140,15 +140,17 @@ function SidebarItem({
   to?: string;
   badge?: React.ReactNode;
 }) {
+  const location = useLocation();
+
   if (to) {
-    const isActiveURL = new URLSearchParams(window.location.search).get('filter');
-    const isDashboard = window.location.pathname === '/dashboard';
+    const isActiveURL = new URLSearchParams(location.search).get('filter');
+    const isDashboard = location.pathname === '/dashboard';
     const toFilter = new URLSearchParams(to.split('?')[1] || '').get('filter');
 
     let active = false;
     if (to === '/dashboard') active = isDashboard && (!isActiveURL || isActiveURL === 'all');
     else if (to.startsWith('/dashboard?filter=')) active = isDashboard && isActiveURL === toFilter;
-    else active = window.location.pathname.startsWith(to);
+    else active = location.pathname.startsWith(to);
 
     return (
       <NavLink

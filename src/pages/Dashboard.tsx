@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MOCK_USERS } from '../data/mockData';
 import { useAuth } from '../auth/AuthContext';
 import { FileText, Plus, Search, Star, Trash2, LayoutGrid, Users, Upload, FileIcon, Image as ImageIcon, Download, RotateCcw, Clock, Layers, FileUp } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { DocumentCard } from '../components/document/DocumentCard';
 import { ShareModal } from '../components/document/ShareModal';
@@ -54,20 +54,34 @@ export function Dashboard() {
     refreshDocuments,
   } = useWorkspace();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sharingDoc, setSharingDoc] = useState<DocumentMeta | null>(null);
 
+  // Sync filter directly from query params so sidebar navigation works seamlessly
+  const filterParam = searchParams.get('filter');
+  const filter: 'all' | 'canvas' | 'doc' | 'files' | 'favorites' | 'shared' | 'recent' | 'trash' =
+    filterParam && ['all', 'canvas', 'doc', 'files', 'favorites', 'shared', 'recent', 'trash'].includes(filterParam)
+      ? (filterParam as any)
+      : 'all';
 
-  // Parse query params to set initial filter if present
-  const [filter, setFilter] = useState<'all' | 'canvas' | 'doc' | 'files' | 'favorites' | 'shared' | 'recent' | 'trash'>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const f = params.get('filter');
-    if (f && ['all', 'canvas', 'doc', 'files', 'favorites', 'shared', 'recent', 'trash'].includes(f)) {
-      return f as any;
+  const setFilter = (nextFilter: string) => {
+    const updated = new URLSearchParams(searchParams);
+    if (nextFilter === 'all') {
+      updated.delete('filter');
+    } else {
+      updated.set('filter', nextFilter);
     }
-    return 'all';
-  });
+    setSearchParams(updated, { replace: true });
+  };
+
+  // Re-fetch documents whenever user navigates to the shared filter
+  useEffect(() => {
+    if (filter === 'shared') {
+      void refreshDocuments();
+    }
+  }, [filter, refreshDocuments]);
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -253,11 +267,7 @@ export function Dashboard() {
             {(['all', 'canvas', 'doc', 'files', 'favorites', 'shared'] as const).map(f => (
               <button
                 key={f}
-                onClick={() => {
-                  setFilter(f);
-                  if (f === 'all') navigate('/dashboard', { replace: true });
-                  else navigate(`/dashboard?filter=${f}`, { replace: true });
-                }}
+                onClick={() => setFilter(f)}
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all whitespace-nowrap ${filter === f
                   ? 'bg-neutral-900 text-white shadow-sm'
                   : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/70'
@@ -359,7 +369,7 @@ export function Dashboard() {
             </div>
           )}
 
-          {!isLoadingDocuments && allDocs.length === 0 && (
+          {!isLoadingDocuments && allDocs.length === 0 && filter !== 'shared' && filter !== 'trash' && (
             <div className="flex flex-col items-center justify-center p-12 mt-4 bg-workspace-50 border border-workspace-200 border-dashed rounded-xl">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
                 <LayoutGrid className="text-workspace-400" size={32} />

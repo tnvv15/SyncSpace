@@ -53,9 +53,9 @@ function toSharedDocumentMeta(doc: SharedDocumentItem): DocumentMeta {
     deletedAt: doc.deletedAt ? new Date(doc.deletedAt).getTime() : undefined,
     createdAt: new Date(doc.createdAt).getTime(),
     updatedAt: new Date(doc.updatedAt).getTime(),
-    createdBy: doc.owner.name,
+    createdBy: doc.owner?.name || 'Collaborator',
     permission: doc.permission,
-    owner: doc.owner,
+    owner: doc.owner || undefined,
     isShared: true,
   };
 }
