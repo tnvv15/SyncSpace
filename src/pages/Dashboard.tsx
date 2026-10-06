@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MOCK_USERS } from '../data/mockData';
 import { useAuth } from '../auth/AuthContext';
 import { FileText, Plus, Search, Star, Trash2, LayoutGrid, Users, Upload, FileIcon, Image as ImageIcon, Download, RotateCcw, Clock, Layers, FileUp } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';

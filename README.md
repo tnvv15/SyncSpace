@@ -82,10 +82,10 @@ tokens, and documents; no new migration is needed for a host-only change.
 
 To verify the setup, register on one PC, then sign in with that same account
 on the other PC. A document created by that account should appear in its
-document list on both PCs. Documents remain owner-protected: a different user
-account will receive access denied unless document-sharing behavior is added
-separately. Yjs canvas content uses its existing WebSocket relay and is outside
-this PostgreSQL configuration; a relay at `localhost` is only local to one PC.
+document list on both PCs. Documents remain owner-managed, and their existing
+sharing permissions control access for other registered users. Yjs canvas
+content uses its existing WebSocket relay and is outside this PostgreSQL
+configuration; a relay at `localhost` is only local to one PC.
 
 ### Local Docker fallback
 
